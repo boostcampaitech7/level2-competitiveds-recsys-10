@@ -18,7 +18,13 @@ jobs:
       - name: Add Jira issue link to GitHub issue
         if: env.JIRA_ISSUE_KEY != ''
         run: |
-          JIRA_LINK="https://yourcompany.atlassian.net/browse/${{ env.JIRA_ISSUE_KEY }}"
+          # Define the Jira base URL (customize your Jira URL here)
+          JIRA_BASE_URL="https://boostcampaitech7recsys.atlassian.net/browse"
+
+          # Create the full Jira issue link
+          JIRA_LINK="${JIRA_BASE_URL}/${{ env.JIRA_ISSUE_KEY }}"
+
+          # Get the current body of the GitHub issue
           ISSUE_BODY="${{ github.event.issue.body }}"
 
           # Add the Jira issue link at the bottom of the GitHub issue
