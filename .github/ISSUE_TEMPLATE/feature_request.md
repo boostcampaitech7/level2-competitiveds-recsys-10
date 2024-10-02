@@ -16,6 +16,3 @@ assignees: ''
 
 ## See also
 - #
-
-## Jira
-This issue is related to Jira issue RECSYS10-

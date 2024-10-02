@@ -2,7 +2,7 @@
 name: Bug report
 about: Reporting a bug for this project
 title: "[BUG]"
-labels: ''
+labels: 'bug'
 assignees: ''
 
 ---
@@ -10,7 +10,7 @@ assignees: ''
 ## Describe the bug
 -
 
-## To Reproduce 
+## To Reproduce
 -
 
 ## Expected behavior
