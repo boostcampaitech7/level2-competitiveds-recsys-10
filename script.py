@@ -1,4 +1,4 @@
-import level2
+import rentpredictor
 
-manager = level2.Manager()
+manager = rentpredictor.Manager()
 manager.run('geo_model.py')
