@@ -17,15 +17,21 @@ class Model(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def fit(self, X: pd.DataFrame, y: pd.Series) -> None:
+    def fit(self, X: pd.DataFrame, y: pd.Series, X_val: pd.DataFrame = None, y_val: pd.Series = None) -> None:
         """모델을 학습합니다.
 
         Parameters
         ----------
         X : pd.DataFrame
-            학습할 데이터입니다.
+            학습 데이터입니다.
         y : pd.Series
-            학습데이터에 대해 예측해야하는 target 값입니다.
+            학습 데이터의 target 값입니다.
+        X_val : pd.DataFrame, optional
+            검증 데이터입니다.
+            early stopping을 위한 것으로, 선택적으로 제공합니다.
+        y_val : pd.Series, optional
+            검증 데이터의 target 값입니다.
+            early stopping을 위한 것으로, 선택적으로 제공합니다.
         """
 
     @abstractmethod

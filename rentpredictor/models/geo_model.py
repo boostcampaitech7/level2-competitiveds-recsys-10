@@ -45,24 +45,43 @@ class GeoModel(Model):
         preprocessor.add_latitude_bin(0.01)
         preprocessor.add_longitude_bin(0.01)
 
-    def fit(self, X: pd.DataFrame, y: pd.Series) -> None:
+    def fit(self, X: pd.DataFrame, y: pd.Series, X_val: pd.DataFrame = None, y_val: pd.Series = None) -> None:
         """모델을 학습합니다.
 
         Parameters
         ----------
         X : pd.DataFrame
-            학습할 데이터입니다.
+            학습 데이터입니다.
         y : pd.Series
-            학습데이터에 대해 예측해야하는 target 값입니다.
+            학습 데이터의 target 값입니다.
+        X_val : pd.DataFrame, optional
+            검증 데이터입니다.
+            early stopping을 위한 것으로, 선택적으로 제공합니다.
+        y_val : pd.Series, optional
+            검증 데이터의 target 값입니다.
+            early stopping을 위한 것으로, 선택적으로 제공합니다.
         """
+        if X_val is None and y_val is None:
+            X_val, y_val = X, y
+        
         self.lgb_model = lgb.train(
             params={
                 'objective': 'regression',
+                'metric': 'mae',
                 'num_leaves': 63,
                 'seed': 42,
                 'verbose': -1,
             },
             train_set=lgb.Dataset(X, y),
+            valid_sets=[
+                lgb.Dataset(X, y),
+                lgb.Dataset(X_val, y_val),
+            ],
+            valid_names=['train', 'val'],
+            callbacks=[
+                lgb.log_evaluation(period=100),
+                lgb.early_stopping(stopping_rounds=200),
+            ],
             num_boost_round=2000,
         )
 
