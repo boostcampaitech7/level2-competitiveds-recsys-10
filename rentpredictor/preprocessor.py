@@ -177,6 +177,33 @@ class Preprocessor:
         feature_name = f'num_{location_type}_within_{radius}'
         self.all_df[feature_name] = self.all_df['location_id'].map(id_to_loc_nums)
 
+    def add_min_distance_to_transfer_station(self) -> None:
+        """
+        각 아파트에서 가장 가까운 환승역까지의 거리를 추가합니다.
+        환승역은 위도와 경도가 동일한 역들로 정의됩니다.
+        """
+        transfer_station_groups = self.subway_df.groupby(['latitude', 'longitude']).size().reset_index(name='transfer_lines_count')
+        transfer_df = transfer_station_groups[transfer_station_groups['transfer_lines_count'] >= 2]
+        transfer_tree = KDTree(transfer_df[['latitude', 'longitude']])
+        id_to_distance = {id: transfer_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()}
+        self.all_df['min_distance_to_transfer_station'] = self.all_df['location_id'].map(id_to_distance)
+
+    def add_transfer_stations_within_radius(self, radius: float) -> None:
+        """
+        반경 내에 있는 환승역의 수를 추가합니다.
+        환승역은 위도와 경도가 동일한 역들로 정의됩니다.
+
+        Parameters
+        ----------
+        radius : float
+            반경 내 환승역을 계산할 반경 (km 단위).
+        """
+        transfer_station_groups = self.subway_df.groupby(['latitude', 'longitude']).size().reset_index(name='transfer_lines_count')
+        transfer_df = transfer_station_groups[transfer_station_groups['transfer_lines_count'] >= 2]
+        transfer_tree = KDTree(transfer_df[['latitude', 'longitude']])
+        id_to_transfer_count = {id: len(transfer_tree.query_ball_point(loc, r=radius)) for loc, id in self.loc_to_id.items()}
+        self.all_df[f'num_transfer_stations_within_{radius}'] = self.all_df['location_id'].map(id_to_transfer_count)
+
     def add_interest_rate(self) -> None:
         """금리 데이터를 추가합니다.
 
