@@ -15,7 +15,7 @@ from catboost import CatBoostRegressor
 class ParameterTune:
     """하이퍼 파라미터를 최적화 하는 class입니다. 
     """
-    def __init__(self,model : str,X : pd.DataFrame,y : pd.Series) -> None:
+    def __init__(self,model : str,X_train : pd.DataFrame,y_train : pd.Series,X_val : pd.DataFrame,y_val : pd.Series) -> None:
         """class를 초기화 하는 함수입니다.
 
         Parameters
@@ -27,8 +27,10 @@ class ParameterTune:
         y : pd.Serise
             학습 데이터에 관한 target 값입니다.
         """
-        self.X = X
-        self.y = y
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_val = X_val
+        self.y_val = y_val
         self.model = model
 
     def objective(self,trial : optuna.Trial) -> float:
@@ -47,22 +49,23 @@ class ParameterTune:
 
     
         if self.model == "lgb":
-            X_train, X_val, y_train, y_val = train_test_split(self.X, self.y, test_size=0.2,random_state=42)
 
             param = {
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3,log=True),
-                "n_estimators": trial.suggest_int("n_estimators", 50, 1000),
-                "num_leaves": trial.suggest_int("num_leaves", 20, 256),
+                "learning_rate": trial.suggest_loguniform("learning_rate", 1e-3, 0.1),
+                "n_estimators": trial.suggest_int("n_estimators", 100, 1500),
+                "num_leaves": trial.suggest_int("num_leaves", 20, 3000),
+                "min_child_samples" : trial.suggest_int('min_child_samples',1,300),
+                "subsample" : trial.suggest_uniform('subsample',0.6,1.0),
+                "colsample_bytree" : trial.suggest_uniform('colsample_bytree',0.6,1.0),
+                "random_state" : 42
             }
 
             clf = lgb.LGBMRegressor(**param,force_col_wise=True)
-            clf.fit(X_train, y_train)
-            y_pred = clf.predict(X_val)
+            clf.fit(self.X_train, self.y_train)
+            y_pred = clf.predict(self.X_val)
 
         elif self.model == "XGBoost":
-            categorical_cols = self.X.select_dtypes(include=['category']).columns.tolist()
-            self.X = pd.get_dummies(self.X,columns=categorical_cols)
-            X_train, X_val, y_train, y_val = train_test_split(self.X, self.y, test_size=0.2,random_state=42)
+ 
             param = {
                 "subsample": trial.suggest_float("subsample", 0.5, 1.0),
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3,log=True),
@@ -71,14 +74,12 @@ class ParameterTune:
 
             # XGBoost 모델 학습
             clf = xgb.XGBRegressor(**param)
-            clf.fit(X_train, y_train)
-            y_pred = clf.predict(X_val)
+            clf.fit(self.X_train, self.y_train)
+            y_pred = clf.predict(self.X_val)
 
 
         elif self.model == "CatBoost":
-            categorical_cols = self.X.select_dtypes(include=['category']).columns.tolist()
-            self.X = pd.get_dummies(self.X,columns=categorical_cols)
-            X_train, X_val, y_train, y_val = train_test_split(self.X, self.y, test_size=0.2,random_state=42)
+ 
             param = {
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
                 "iterations": int(trial.suggest_int("iterations", 100, 1000, log=True)),
@@ -88,14 +89,14 @@ class ParameterTune:
 
             # CatBoost 모델 학습
             clf = CatBoostRegressor(**param, verbose=0)  # verbose=0으로 출력을 억제
-            clf.fit(X_train, y_train)
-            y_pred = clf.predict(X_val)
+            clf.fit(self.X_train, self.y_train)
+            y_pred = clf.predict(self.X_val)
 
 
-        return mean_absolute_error(y_val,y_pred)
+        return mean_absolute_error(self.y_val,y_pred)
         
 
-    def tune(self) -> None:
+    def tune(self) -> optuna.Trial:
         """Optuna를 사용하여 하이퍼 파라미터 튜닝을 수행하는 함수입니다.
 
     주어진 모델에 대해 하이퍼 파라미터를 자동으로 탐색하며, 최적의 파라미터를 반환합니다.
@@ -115,10 +116,10 @@ class ParameterTune:
     """
 
         study = optuna.create_study(direction="minimize")
-        study.optimize(self.objective,n_trials=30)
+        study.optimize(self.objective,n_trials=10)
 
         trial = study.best_trial
-        print(f"mms : {trial.value}")
+        print(f"MAE : {trial.value}")
 
 
         return trial.params
