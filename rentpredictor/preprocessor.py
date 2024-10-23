@@ -1,13 +1,21 @@
 import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
+from sklearn.neighbors import BallTree
+
 
 class Preprocessor:
-    """데이터 전처리를 수행하는 클래스입니다.
-    """
+    """데이터 전처리를 수행하는 클래스입니다."""
 
-    def __init__(self, train_df: pd.DataFrame, test_df: pd.DataFrame, park_df: pd.DataFrame,
-                 school_df: pd.DataFrame, subway_df: pd.DataFrame, interest_df: pd.DataFrame) -> None:
+    def __init__(
+        self,
+        train_df: pd.DataFrame,
+        test_df: pd.DataFrame,
+        park_df: pd.DataFrame,
+        school_df: pd.DataFrame,
+        subway_df: pd.DataFrame,
+        interest_df: pd.DataFrame,
+    ) -> None:
         """전처리하는 데에 있어서 필요한 데이터들을 받고 저장합니다.
 
         Parameters
@@ -36,11 +44,13 @@ class Preprocessor:
         # 전처리는 이 DataFrame을 기반으로 진행됩니다.
         self.all_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
 
-        self.all_df['contract_type'] = self.all_df['contract_type'].astype('category')
+        self.all_df["contract_type"] = self.all_df["contract_type"].astype("category")
 
         # (latitude, longitude) 튜플을 고유한 id로 변환하는 딕셔너리입니다.
         # 이는 위치 데이터를 다루는 데에 있어서 중복된 계산을 피하기 위함입니다.
-        unique_locations = self.all_df[['latitude', 'longitude']].drop_duplicates().values.tolist()
+        unique_locations = (
+            self.all_df[["latitude", "longitude"]].drop_duplicates().values.tolist()
+        )
         self.loc_to_id = {tuple(loc): id for id, loc in enumerate(unique_locations)}
 
     def remove_unnecessary_locations(self, epsilon: float):
@@ -53,25 +63,36 @@ class Preprocessor:
 
             집들이 모여있는 사각형 경계로부터 epsilon 이상 떨어져있는 장소들을 제거합니다.
         """
-        min_lat, max_lat = self.all_df['latitude'].min() - epsilon, self.all_df['latitude'].max() + epsilon
-        min_long, max_long = self.all_df['longitude'].min() - epsilon, self.all_df['longitude'].max() + epsilon
+        min_lat, max_lat = (
+            self.all_df["latitude"].min() - epsilon,
+            self.all_df["latitude"].max() + epsilon,
+        )
+        min_long, max_long = (
+            self.all_df["longitude"].min() - epsilon,
+            self.all_df["longitude"].max() + epsilon,
+        )
 
         def get_clean_df(location_df: pd.DataFrame) -> pd.DataFrame:
-            location_df = location_df[(location_df['latitude'] > min_lat) & (location_df['latitude'] < max_lat)]
-            location_df = location_df[(location_df['longitude'] > min_long) & (location_df['longitude'] < max_long)]
+            location_df = location_df[
+                (location_df["latitude"] > min_lat)
+                & (location_df["latitude"] < max_lat)
+            ]
+            location_df = location_df[
+                (location_df["longitude"] > min_long)
+                & (location_df["longitude"] < max_long)
+            ]
             return location_df
-        
+
         self.park_df = get_clean_df(self.park_df)
         self.school_df = get_clean_df(self.school_df)
         self.subway_df = get_clean_df(self.subway_df)
 
     def add_location_id(self) -> None:
-        """위치에 따른 고유한 id를 추가합니다.
-        """
-        tuple_array = [self.all_df['latitude'].values, self.all_df['longitude'].values]
-        self.all_df['location_id'] = pd.Series(
+        """위치에 따른 고유한 id를 추가합니다."""
+        tuple_array = [self.all_df["latitude"].values, self.all_df["longitude"].values]
+        self.all_df["location_id"] = pd.Series(
             [self.loc_to_id[(lat, long)] for lat, long in zip(*tuple_array)]
-        ).astype('category')
+        ).astype("category")
 
     def add_latitude_bin(self, bin: float) -> None:
         """위도를 binning하여 category로 만든 열을 추가합니다.
@@ -81,11 +102,10 @@ class Preprocessor:
         bin : float
             bin의 크기입니다.
         """
-        min_lat, max_lat = self.all_df['latitude'].min(), self.all_df['latitude'].max()
-        self.all_df['latitude_bin'] = pd.cut(
-            self.all_df['latitude'],                      
-            bins=np.arange(min_lat, max_lat, bin)
-        ).cat.codes.astype('category')
+        min_lat, max_lat = self.all_df["latitude"].min(), self.all_df["latitude"].max()
+        self.all_df["latitude_bin"] = pd.cut(
+            self.all_df["latitude"], bins=np.arange(min_lat, max_lat, bin)
+        ).cat.codes.astype("category")
 
     def add_longitude_bin(self, bin: float) -> None:
         """경도를 binning하여 category로 만든 열을 추가합니다.
@@ -95,13 +115,17 @@ class Preprocessor:
         bin : float
             bin의 크기입니다.
         """
-        min_long, max_long = self.all_df['longitude'].min(), self.all_df['longitude'].max()
-        self.all_df['longitude_bin'] = pd.cut(
-            self.all_df['longitude'],
-            bins=np.arange(min_long, max_long, bin)
-        ).cat.codes.astype('category')
+        min_long, max_long = (
+            self.all_df["longitude"].min(),
+            self.all_df["longitude"].max(),
+        )
+        self.all_df["longitude_bin"] = pd.cut(
+            self.all_df["longitude"], bins=np.arange(min_long, max_long, bin)
+        ).cat.codes.astype("category")
 
-    def add_min_distance_to_park(self, min_area: int = -1, max_area: int = 1e12) -> None:
+    def add_min_distance_to_park(
+        self, min_area: int = -1, max_area: int = 1e12
+    ) -> None:
         """가장 가까운 공원까지의 거리를 추가합니다.
 
         add_location_id를 먼저 호출해야합니다.
@@ -113,18 +137,22 @@ class Preprocessor:
         max_area : int, optional
             공원의 최대 면적입니다. 이보다 큰 공원은 고려하지 않습니다.
         """
-        park_df = self.park_df[(self.park_df['area'] >= min_area) & (self.park_df['area'] <= max_area)]
-        park_tree = KDTree(park_df[['latitude', 'longitude']])
+        park_df = self.park_df[
+            (self.park_df["area"] >= min_area) & (self.park_df["area"] <= max_area)
+        ]
+        park_tree = KDTree(park_df[["latitude", "longitude"]])
 
-        id_to_distance = {id: park_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()}
-        feature_name = 'min_distance_to_park'
+        id_to_distance = {
+            id: park_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()
+        }
+        feature_name = "min_distance_to_park"
         if min_area > -1:
-            feature_name += f'_min_{min_area}'
+            feature_name += f"_min_{min_area}"
         if max_area < 1e12:
-            feature_name += f'_max_{max_area}'
-        self.all_df[feature_name] = self.all_df['location_id'].map(id_to_distance)
+            feature_name += f"_max_{max_area}"
+        self.all_df[feature_name] = self.all_df["location_id"].map(id_to_distance)
 
-    def add_min_distance_to_school(self, school_type: str = 'all') -> None:
+    def add_min_distance_to_school(self, school_type: str = "all") -> None:
         """가장 가까운 학교까지의 거리를 추가합니다.
 
         add_location_id를 먼저 호출해야합니다.
@@ -140,23 +168,29 @@ class Preprocessor:
             'all': 모든 종류의 학교
         """
         school_df = self.school_df.copy()
-        if school_type != 'all':
-            school_df = school_df[school_df['schoolLevel'] == school_type]
-        school_tree = KDTree(school_df[['latitude', 'longitude']])
+        if school_type != "all":
+            school_df = school_df[school_df["schoolLevel"] == school_type]
+        school_tree = KDTree(school_df[["latitude", "longitude"]])
 
-        id_to_distance = {id: school_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()}
-        feature_name = f'min_distance_to_school_{school_type}'
-        self.all_df[feature_name] = self.all_df['location_id'].map(id_to_distance)
+        id_to_distance = {
+            id: school_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()
+        }
+        feature_name = f"min_distance_to_school_{school_type}"
+        self.all_df[feature_name] = self.all_df["location_id"].map(id_to_distance)
 
     def add_min_distance_to_subway(self) -> None:
         """가장 가까운 지하철까지의 거리를 추가합니다.
 
         add_location_id를 먼저 호출해야합니다.
         """
-        subway_tree = KDTree(self.subway_df[['latitude', 'longitude']])
+        subway_tree = KDTree(self.subway_df[["latitude", "longitude"]])
 
-        id_to_distance = {id: subway_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()}
-        self.all_df['min_distance_to_subway'] = self.all_df['location_id'].map(id_to_distance)
+        id_to_distance = {
+            id: subway_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()
+        }
+        self.all_df["min_distance_to_subway"] = self.all_df["location_id"].map(
+            id_to_distance
+        )
 
     def add_locations_within_radius(self, location_type: str, radius: float) -> None:
         """반경 내에 있는 특정 장소의 수를 추가합니다.
@@ -170,23 +204,35 @@ class Preprocessor:
         radius : float
             반경입니다.
         """
-        loc_df = getattr(self, f'{location_type}_df')
-        loc_tree = KDTree(loc_df[['latitude', 'longitude']])
-        id_to_loc_nums = {id: loc_tree.query_ball_point(loc, r=radius, return_length=True)
-                          for loc, id in self.loc_to_id.items()}
-        feature_name = f'num_{location_type}_within_{radius}'
-        self.all_df[feature_name] = self.all_df['location_id'].map(id_to_loc_nums)
+        loc_df = getattr(self, f"{location_type}_df")
+        loc_tree = KDTree(loc_df[["latitude", "longitude"]])
+        id_to_loc_nums = {
+            id: loc_tree.query_ball_point(loc, r=radius, return_length=True)
+            for loc, id in self.loc_to_id.items()
+        }
+        feature_name = f"num_{location_type}_within_{radius}"
+        self.all_df[feature_name] = self.all_df["location_id"].map(id_to_loc_nums)
 
     def add_min_distance_to_transfer_station(self) -> None:
         """
         각 아파트에서 가장 가까운 환승역까지의 거리를 추가합니다.
         환승역은 위도와 경도가 동일한 역들로 정의됩니다.
         """
-        transfer_station_groups = self.subway_df.groupby(['latitude', 'longitude']).size().reset_index(name='transfer_lines_count')
-        transfer_df = transfer_station_groups[transfer_station_groups['transfer_lines_count'] >= 2]
-        transfer_tree = KDTree(transfer_df[['latitude', 'longitude']])
-        id_to_distance = {id: transfer_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()}
-        self.all_df['min_distance_to_transfer_station'] = self.all_df['location_id'].map(id_to_distance)
+        transfer_station_groups = (
+            self.subway_df.groupby(["latitude", "longitude"])
+            .size()
+            .reset_index(name="transfer_lines_count")
+        )
+        transfer_df = transfer_station_groups[
+            transfer_station_groups["transfer_lines_count"] >= 2
+        ]
+        transfer_tree = KDTree(transfer_df[["latitude", "longitude"]])
+        id_to_distance = {
+            id: transfer_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()
+        }
+        self.all_df["min_distance_to_transfer_station"] = self.all_df[
+            "location_id"
+        ].map(id_to_distance)
 
     def add_transfer_stations_within_radius(self, radius: float) -> None:
         """
@@ -198,21 +244,34 @@ class Preprocessor:
         radius : float
             반경 내 환승역을 계산할 반경 (km 단위).
         """
-        transfer_station_groups = self.subway_df.groupby(['latitude', 'longitude']).size().reset_index(name='transfer_lines_count')
-        transfer_df = transfer_station_groups[transfer_station_groups['transfer_lines_count'] >= 2]
-        transfer_tree = KDTree(transfer_df[['latitude', 'longitude']])
-        id_to_transfer_count = {id: len(transfer_tree.query_ball_point(loc, r=radius)) for loc, id in self.loc_to_id.items()}
-        self.all_df[f'num_transfer_stations_within_{radius}'] = self.all_df['location_id'].map(id_to_transfer_count)
+        transfer_station_groups = (
+            self.subway_df.groupby(["latitude", "longitude"])
+            .size()
+            .reset_index(name="transfer_lines_count")
+        )
+        transfer_df = transfer_station_groups[
+            transfer_station_groups["transfer_lines_count"] >= 2
+        ]
+        transfer_tree = KDTree(transfer_df[["latitude", "longitude"]])
+        id_to_transfer_count = {
+            id: len(transfer_tree.query_ball_point(loc, r=radius))
+            for loc, id in self.loc_to_id.items()
+        }
+        self.all_df[f"num_transfer_stations_within_{radius}"] = self.all_df[
+            "location_id"
+        ].map(id_to_transfer_count)
 
     def add_interest_rate(self) -> None:
         """금리 데이터를 추가합니다.
 
         contract_year_month 행이 존재해야합니다.
         """
-        self.all_df = self.all_df.merge(self.interest_df,
-                                        left_on='contract_year_month',
-                                        right_on='year_month', 
-                                        how='left')
+        self.all_df = self.all_df.merge(
+            self.interest_df,
+            left_on="contract_year_month",
+            right_on="year_month",
+            how="left",
+        )
 
     def drop_columns(self, column_names: list[str]) -> None:
         """불필요한 열을 제거합니다.
@@ -232,7 +291,7 @@ class Preprocessor:
         pd.DataFrame
             전처리된 학습 데이터 프레임입니다.
         """
-        train_df = self.all_df.iloc[:len(self.train_df)]
+        train_df = self.all_df.iloc[: len(self.train_df)]
         return train_df
 
     def get_test_df(self) -> pd.DataFrame:
@@ -244,7 +303,43 @@ class Preprocessor:
             전처리된 테스트 데이터 프레임입니다.
             deposit 열은 제거되어 있습니다.
         """
-        test_df = self.all_df.iloc[len(self.train_df):]
-        test_df = test_df.drop(columns='deposit')
+        test_df = self.all_df.iloc[len(self.train_df) :]
+        test_df = test_df.drop(columns="deposit")
         return test_df
 
+    def get_data_within_radius(
+        df: pd.DataFrame, km: float, latitude: float, longitude: float
+    ) -> pd.DataFrame:
+        """BallTree를 사용해 주어진 반경 내의 데이터를 추출합니다.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            위도와 경도 정보를 포함한 데이터 프레임입니다. 'latitude', 'longitude' 열이 포함되어야 합니다.
+        km : float
+            탐색할 반경 (킬로미터)입니다.
+        latitude : float
+            탐색 중심의 위도입니다.
+        longitude : float
+            탐색 중심의 경도입니다.
+
+        Returns
+        -------
+        pd.DataFrame
+            주어진 반경 내에 있는 데이터만 포함한 데이터 프레임입니다.
+        """
+        # 위도, 경도를 라디안으로 변환
+        df_radians = np.radians(df[["latitude", "longitude"]])
+        center_point = np.radians([[latitude, longitude]])
+
+        # BallTree 초기화 (지구 반지름: 약 6371km)
+        tree = BallTree(df_radians, metric="haversine")
+
+        # 반경을 라디안으로 변환 (1km ≈ 1 / 6371 라디안)
+        radius = km / 6371.0
+
+        # 반경 내의 인덱스 찾기
+        indices = tree.query_radius(center_point, r=radius)[0]
+
+        # 해당 인덱스에 해당하는 데이터 반환
+        return df.iloc[indices]
