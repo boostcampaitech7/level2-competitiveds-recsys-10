@@ -43,6 +43,10 @@ class Preprocessor:
         unique_locations = self.all_df[['latitude', 'longitude']].drop_duplicates().values.tolist()
         self.loc_to_id = {tuple(loc): id for id, loc in enumerate(unique_locations)}
 
+        # (latitude, longitude, area_m2) 튜플을 고유한 id로 변환하는 딕셔너리입니다.
+        unique_locations = self.all_df[['latitude', 'longitude', 'area_m2']].drop_duplicates().values.tolist()
+        self.loc_area_to_id = {tuple(loc): id for id, loc in enumerate(unique_locations)}
+
     def remove_unnecessary_locations(self, epsilon: float):
         """예측하고자 하는 집들의 공간으로부터 epsilon 이상 떨어져있기에 예측에 있어서 불필요한 장소를 제거합니다.
 
@@ -73,6 +77,21 @@ class Preprocessor:
             [self.loc_to_id[(lat, long)] for lat, long in zip(*tuple_array)]
         ).astype('category')
 
+    def add_location_with_area_id(self) -> None:
+        """위치와 넓이에 따른 고유한 id를 추가합니다.
+        """
+        tuple_array = [self.all_df['latitude'].values, self.all_df['longitude'].values, self.all_df['area_m2'].values]
+        self.all_df['location_with_area_id'] = pd.Series(
+            [self.loc_area_to_id[(lat, long, area)] for lat, long, area in zip(*tuple_array)]
+        ).astype('category')
+
+    def add_contract_datetime(self) -> None:
+        """계약 시간을 datetime 형식으로 변환합니다.
+        """
+        self.all_df['contract_datetime'] = (self.all_df['contract_year_month'].astype(str) + 
+                                            self.all_df['contract_day'].astype(str))
+        self.all_df['contract_datetime'] = pd.to_datetime(self.all_df['contract_datetime'], format='%Y%m%d')
+    
     def add_latitude_bin(self, bin: float) -> None:
         """위도를 binning하여 category로 만든 열을 추가합니다.
 
@@ -176,33 +195,6 @@ class Preprocessor:
                           for loc, id in self.loc_to_id.items()}
         feature_name = f'num_{location_type}_within_{radius}'
         self.all_df[feature_name] = self.all_df['location_id'].map(id_to_loc_nums)
-
-    def add_min_distance_to_transfer_station(self) -> None:
-        """
-        각 아파트에서 가장 가까운 환승역까지의 거리를 추가합니다.
-        환승역은 위도와 경도가 동일한 역들로 정의됩니다.
-        """
-        transfer_station_groups = self.subway_df.groupby(['latitude', 'longitude']).size().reset_index(name='transfer_lines_count')
-        transfer_df = transfer_station_groups[transfer_station_groups['transfer_lines_count'] >= 2]
-        transfer_tree = KDTree(transfer_df[['latitude', 'longitude']])
-        id_to_distance = {id: transfer_tree.query([loc])[0][0] for loc, id in self.loc_to_id.items()}
-        self.all_df['min_distance_to_transfer_station'] = self.all_df['location_id'].map(id_to_distance)
-
-    def add_transfer_stations_within_radius(self, radius: float) -> None:
-        """
-        반경 내에 있는 환승역의 수를 추가합니다.
-        환승역은 위도와 경도가 동일한 역들로 정의됩니다.
-
-        Parameters
-        ----------
-        radius : float
-            반경 내 환승역을 계산할 반경 (km 단위).
-        """
-        transfer_station_groups = self.subway_df.groupby(['latitude', 'longitude']).size().reset_index(name='transfer_lines_count')
-        transfer_df = transfer_station_groups[transfer_station_groups['transfer_lines_count'] >= 2]
-        transfer_tree = KDTree(transfer_df[['latitude', 'longitude']])
-        id_to_transfer_count = {id: len(transfer_tree.query_ball_point(loc, r=radius)) for loc, id in self.loc_to_id.items()}
-        self.all_df[f'num_transfer_stations_within_{radius}'] = self.all_df['location_id'].map(id_to_transfer_count)
 
     def add_interest_rate(self) -> None:
         """금리 데이터를 추가합니다.

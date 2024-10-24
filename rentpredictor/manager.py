@@ -15,8 +15,8 @@ class Manager:
         """학습과 테스트에 사용될 모든 데이터를 로드합니다.
         """
         data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-        self.train_df = pd.read_csv(os.path.join(data_path, 'train.csv'))
-        self.test_df = pd.read_csv(os.path.join(data_path, 'test.csv'))
+        self.train_df = pd.read_csv(os.path.join(data_path, 'train.csv'), index_col=0)
+        self.test_df = pd.read_csv(os.path.join(data_path, 'test.csv'), index_col=0)
         self.park_df = pd.read_csv(os.path.join(data_path, 'parkInfo.csv'))
         self.school_df = pd.read_csv(os.path.join(data_path, 'schoolinfo.csv'))
         self.subway_df = pd.read_csv(os.path.join(data_path, 'subwayInfo.csv'))
