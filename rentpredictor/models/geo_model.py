@@ -1,3 +1,5 @@
+import os
+import matplotlib.pyplot as plt
 import pandas as pd
 import lightgbm as lgb
 from .model import Model
@@ -39,9 +41,14 @@ class GeoModel(Model):
         # 반경 0.1 내에 있는 지하철역, 공원, 학교의 개수를 추가합니다.
         preprocessor.add_locations_within_radius('subway', 0.1)
         preprocessor.add_locations_within_radius('park', 0.1)
-        preprocessor.add_locations_within_radius('school', 0.1)
+        preprocessor.add_locations_within_radius('school', 0.01)
+        preprocessor.add_locations_within_radius('subway', 0.01)
+        preprocessor.add_locations_within_radius('park', 0.01)
+        preprocessor.add_locations_within_radius('school', 0.01)
 
         # 위도, 경도를 binning하여 추가합니다.
+        preprocessor.add_latitude_bin(0.1)
+        preprocessor.add_longitude_bin(0.1)
         preprocessor.add_latitude_bin(0.01)
         preprocessor.add_longitude_bin(0.01)
 
@@ -63,27 +70,38 @@ class GeoModel(Model):
         """
         if X_val is None and y_val is None:
             X_val, y_val = X, y
+
+        X_all = pd.concat([X, X_val], axis=0)
+        X_all.drop(columns=['contract_datetime'], inplace=True, errors='ignore')
+        X, X_val = X_all.iloc[:len(X)], X_all.iloc[len(X):]
         
-        self.lgb_model = lgb.train(
-            params={
-                'objective': 'regression',
-                'metric': 'mae',
-                'num_leaves': 63,
-                'seed': 42,
-                'verbose': -1,
-            },
-            train_set=lgb.Dataset(X, y),
-            valid_sets=[
-                lgb.Dataset(X, y),
-                lgb.Dataset(X_val, y_val),
-            ],
-            valid_names=['train', 'val'],
-            callbacks=[
-                lgb.log_evaluation(period=100),
-                lgb.early_stopping(stopping_rounds=200),
-            ],
-            num_boost_round=2000,
-        )
+        if not os.path.exists('model.txt'):
+            self.lgb_model = lgb.train(
+                params={
+                    'objective': 'regression',
+                    'metric': 'mae',
+                    'num_leaves': 63,
+                    'seed': 42,
+                    'verbose': -1,
+                },
+                train_set=lgb.Dataset(X, y),
+                valid_sets=[
+                    lgb.Dataset(X, y),
+                    lgb.Dataset(X_val, y_val),
+                ],
+                valid_names=['train', 'val'],
+                callbacks=[
+                    lgb.log_evaluation(period=100),
+                    lgb.early_stopping(stopping_rounds=100),
+                ],
+                num_boost_round=1500,
+            )
+            self.lgb_model.save_model('model.txt')
+        else:
+            self.lgb_model = lgb.Booster(model_file='model.txt')
+
+        lgb.plot_importance(self.lgb_model, importance_type='gain')
+        plt.savefig('feature_importance.png', bbox_inches='tight')
 
     def predict(self, X: pd.DataFrame) -> pd.Series:
         """테스트 데이터에 대해 예측을 수행합니다.
@@ -100,5 +118,6 @@ class GeoModel(Model):
         pd.Series
             테스트데이터에 대한 예측한 결과입니다.
         """
+        X.drop(columns=['contract_datetime'], inplace=True, errors='ignore')
         y_pred = self.lgb_model.predict(X)
         return pd.Series(y_pred)
