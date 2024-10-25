@@ -12,35 +12,24 @@ class Preprocessor:
     """데이터 전처리를 수행하는 클래스입니다.
     """
 
-    def __init__(self, train_df: pd.DataFrame, test_df: pd.DataFrame, park_df: pd.DataFrame,
-                 school_df: pd.DataFrame, subway_df: pd.DataFrame, interest_df: pd.DataFrame) -> None:
+    def __init__(self, dataframes: dict[str, pd.DataFrame]) -> None:
         """전처리하는 데에 있어서 필요한 데이터들을 받고 저장합니다.
 
         Parameters
         ----------
-        train_df : pd.DataFrame
-            학습 데이터 프레임입니다.
-        test_df : pd.DataFrame
-            테스트 데이터 프레임입니다.
-        park_df : pd.DataFrame
-            공원 데이터 프레임입니다.
-        school_df : pd.DataFrame
-            학교 데이터 프레임입니다.
-        subway_df : pd.DataFrame
-            지하철 데이터 프레임입니다.
-        interest_df : pd.DataFrame
-            금리 데이터 프레임입니다.
+        dataframes : dict[str, pd.DataFrame]
+            학습 데이터, 테스트 데이터, 그리고 그 외 정보를 포함한 딕셔너리입니다.
         """
-        self.train_df = train_df
-        self.test_df = test_df
-        self.park_df = park_df
-        self.school_df = school_df
-        self.subway_df = subway_df
-        self.interest_df = interest_df
+        self.train_df = dataframes['train_df']
+        self.test_df = dataframes['test_df']
+        self.park_df = dataframes['park_df']
+        self.school_df = dataframes['school_df']
+        self.subway_df = dataframes['subway_df']
+        self.interest_df = dataframes['interest_df']
 
         # train_df와 test_df를 합친 DataFrame입니다.
         # 전처리는 이 DataFrame을 기반으로 진행됩니다.
-        self.all_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
+        self.all_df = pd.concat([self.train_df, self.test_df], axis=0, ignore_index=True)
 
         self.all_df['contract_type'] = self.all_df['contract_type'].astype('category')
 
@@ -386,9 +375,7 @@ class Preprocessor:
         -------
         pd.DataFrame
             전처리된 테스트 데이터 프레임입니다.
-            deposit 열은 제거되어 있습니다.
         """
         test_df = self.all_df.iloc[len(self.train_df):]
-        test_df = test_df.drop(columns='deposit')
         return test_df
 
