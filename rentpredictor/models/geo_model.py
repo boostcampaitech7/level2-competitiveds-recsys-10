@@ -1,5 +1,3 @@
-import os
-import matplotlib.pyplot as plt
 import pandas as pd
 import lightgbm as lgb
 from .model import Model
@@ -9,14 +7,21 @@ class GeoModel(Model):
     """각종 지리정보가 feature로 추가된 모델입니다.
     """
 
-    def preprocess(self, preprocessor: Preprocessor) -> None:
-        """지리 관련 feature를 추가합니다.
+    def set_data(self, dataframes: dict[str, pd.DataFrame]) -> None:
+        """각종 데이터를 설정합니다.
 
         Parameters
         ----------
-        preprocessor : Preprocessor
-            전처리될 데이터를 담고 있는 Preprocessor 객체입니다.
+        dataframes : dict[str, pd.DataFrame]
+            학습 및 테스트 데이터, 그리고 그 외 정보를 포함한 딕셔너리입니다.
         """
+        self.dataframes = dataframes
+        
+    def preprocess(self) -> None:
+        """데이터를 전처리합니다.
+        """
+
+        preprocessor = Preprocessor(self.dataframes)
         preprocessor.remove_unnecessary_locations(0.1)
         preprocessor.add_location_id()
 
@@ -41,83 +46,53 @@ class GeoModel(Model):
         # 반경 0.1 내에 있는 지하철역, 공원, 학교의 개수를 추가합니다.
         preprocessor.add_locations_within_radius('subway', 0.1)
         preprocessor.add_locations_within_radius('park', 0.1)
-        preprocessor.add_locations_within_radius('school', 0.01)
-        preprocessor.add_locations_within_radius('subway', 0.01)
-        preprocessor.add_locations_within_radius('park', 0.01)
-        preprocessor.add_locations_within_radius('school', 0.01)
+        preprocessor.add_locations_within_radius('school', 0.1)
 
-        # 위도, 경도를 binning하여 추가합니다.
+        preprocessor.add_transfer_stations_within_radius(0.1)
+
         preprocessor.add_latitude_bin(0.1)
         preprocessor.add_longitude_bin(0.1)
-        preprocessor.add_latitude_bin(0.01)
-        preprocessor.add_longitude_bin(0.01)
 
-    def fit(self, X: pd.DataFrame, y: pd.Series, X_val: pd.DataFrame = None, y_val: pd.Series = None) -> None:
-        """모델을 학습합니다.
+        self.train_df = preprocessor.get_train_df()
+        self.test_df = preprocessor.get_test_df()
 
-        Parameters
-        ----------
-        X : pd.DataFrame
-            학습 데이터입니다.
-        y : pd.Series
-            학습 데이터의 target 값입니다.
-        X_val : pd.DataFrame, optional
-            검증 데이터입니다.
-            early stopping을 위한 것으로, 선택적으로 제공합니다.
-        y_val : pd.Series, optional
-            검증 데이터의 target 값입니다.
-            early stopping을 위한 것으로, 선택적으로 제공합니다.
+    def fit(self) -> None:
+        """학습 데이터를 통해 모델을 학습합니다.
         """
-        if X_val is None and y_val is None:
-            X_val, y_val = X, y
-
-        X_all = pd.concat([X, X_val], axis=0)
-        X_all.drop(columns=['contract_datetime'], inplace=True, errors='ignore')
-        X, X_val = X_all.iloc[:len(X)], X_all.iloc[len(X):]
+        X_train, y_train = self.train_df.drop(columns=['deposit']), self.train_df['deposit']
+        X_val, y_val = self.test_df.drop(columns=['deposit']), self.test_df['deposit']
         
-        if not os.path.exists('model.txt'):
-            self.lgb_model = lgb.train(
-                params={
-                    'objective': 'regression',
-                    'metric': 'mae',
-                    'num_leaves': 63,
-                    'seed': 42,
-                    'verbose': -1,
-                },
-                train_set=lgb.Dataset(X, y),
-                valid_sets=[
-                    lgb.Dataset(X, y),
-                    lgb.Dataset(X_val, y_val),
-                ],
-                valid_names=['train', 'val'],
-                callbacks=[
-                    lgb.log_evaluation(period=100),
-                    lgb.early_stopping(stopping_rounds=100),
-                ],
-                num_boost_round=1500,
-            )
-            self.lgb_model.save_model('model.txt')
-        else:
-            self.lgb_model = lgb.Booster(model_file='model.txt')
+        train_dataset = lgb.Dataset(X_train, y_train)
+        val_dataset = lgb.Dataset(X_val, y_val)
+        params = {
+            'learning_rate': 0.07143490991704106, 'n_estimators': 1418, 'num_leaves': 116, 
+            'max_depth': 14, 'min_child_weight': 18, 'subsample': 0.7903627891322709, 
+            'colsample_bytree': 0.892700154945412, 'lambda_l1': 5.5916562635855494e-08, 
+            'lambda_l2': 0.00014233586207456367, 'min_split_gain': 0.7602166984240577
+        }
+        self.lgb_model = lgb.train(
+            params=params,
+            train_set=train_dataset,
+            valid_sets=[
+                train_dataset,
+                val_dataset,
+            ],
+            valid_names=['train', 'val'],
+            callbacks=[
+                lgb.log_evaluation(period=100),
+            ],
+            num_boost_round=2000,
+        )
 
-        lgb.plot_importance(self.lgb_model, importance_type='gain')
-        plt.savefig('feature_importance.png', bbox_inches='tight')
-
-    def predict(self, X: pd.DataFrame) -> pd.Series:
+    def predict(self) -> pd.Series:
         """테스트 데이터에 대해 예측을 수행합니다.
-
-        메서드를 호출하기 전, fit 메서드를 먼저 호출해야합니다.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            예측을 수행할 테스트데이터입니다.
 
         Returns
         -------
         pd.Series
-            테스트데이터에 대한 예측한 결과입니다.
+            테스트 데이터에 대한 예측한 결과입니다.
         """
-        X.drop(columns=['contract_datetime'], inplace=True, errors='ignore')
-        y_pred = self.lgb_model.predict(X)
-        return pd.Series(y_pred)
+        X_test = self.test_df.drop(columns=['deposit'])
+        y_test_pred = self.lgb_model.predict(X_test)
+        y_test_pred = pd.Series(y_test_pred)
+        return y_test_pred

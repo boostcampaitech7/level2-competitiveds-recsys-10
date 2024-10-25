@@ -5,65 +5,63 @@ from .model import Model
 from ..preprocessor import Preprocessor
 
 class NaiveModel(Model):
-    """직전 N개의 거래를 평균하여 예측하는 모델입니다.
+    """이전 거래들의 지수 가중 평균을 예측으로 두는 모델입니다.
     """
-
-    def preprocess(self, preprocessor: Preprocessor) -> None:
-        """지리 관련 feature를 추가합니다.
+    def set_data(self, dataframes: dict[str, pd.DataFrame]) -> None:
+        """학습 및 테스트 데이터를 설정합니다.
 
         Parameters
         ----------
-        preprocessor : Preprocessor
-            전처리될 데이터를 담고 있는 Preprocessor 객체입니다.
+        dataframes : dict[str, pd.DataFrame]
+            학습 및 테스트 데이터를 포함한 딕셔너리입니다.
         """
+        self.dataframes = dataframes
+
+    def preprocess(self) -> None:
+        """id와 거래 시간 관련 feature를 추가합니다.
+        """
+        preprocessor = Preprocessor(self.dataframes)
         preprocessor.add_location_id()
         preprocessor.add_location_with_area_id()
         preprocessor.add_contract_datetime()
+        self.train_df = preprocessor.get_train_df()
+        self.test_df = preprocessor.get_test_df()
 
-    def fit(self, X: pd.DataFrame, y: pd.Series, X_val: pd.DataFrame = None, y_val: pd.Series = None) -> None:
+    def fit(self) -> None:
         """모델을 학습합니다.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            학습 데이터입니다.
-        y : pd.Series
-            학습 데이터의 target 값입니다.
-        X_val : pd.DataFrame, optional
-            검증 데이터입니다.
-            early stopping을 위한 것으로, 선택적으로 제공합니다.
-        y_val : pd.Series, optional
-            검증 데이터의 target 값입니다.
-            early stopping을 위한 것으로, 선택적으로 제공합니다.
         """
-        house_df = pd.concat([X, y], axis=1)
+        house_df = self.train_df.copy()
+        house_df = house_df[['location_with_area_id', 'deposit', 'contract_datetime']]
         house_df.sort_values(by=['location_with_area_id', 'contract_datetime'], inplace=True)
-        house_df = house_df[['location_with_area_id', 'deposit', 'floor', 'contract_datetime']]
-        last_transactions = house_df.groupby('location_with_area_id', observed=True)
+        grouped_house_df = house_df.groupby('location_with_area_id', observed=True)
 
-        self.target = {}
-        self.impute_value = np.nan
-        for area_id, group in tqdm(last_transactions):
-            group = group.tail(3)
-            cv = group['deposit'].std() / group['deposit'].mean()
-            if cv > 0.3:
-                continue
-            self.target[area_id] = group['deposit'].mean()
-        
-    def predict(self, X: pd.DataFrame) -> pd.Series:
+        self.area_id_to_deposit_pred = {
+            loc_area_id: group['deposit'].ewm(alpha=0.5).mean().iloc[-1]
+            for loc_area_id, group in grouped_house_df
+        }
+
+        '''self.area_id_to_deposit_pred = {
+            loc_area_id: group['deposit'].tail(5).mean()
+            for loc_area_id, group in grouped_house_df
+        }'''
+
+        '''self.area_id_to_deposit_pred = {}
+        for loc_area_id, group in tqdm(grouped_house_df):
+            group = group.set_index('contract_datetime')
+            deposit_series = group['deposit'].resample('1D').mean()
+            deposit_series = deposit_series.interpolate(method='linear', limit_area='inside')
+            last_valid_date = deposit_series.last_valid_index()
+            deposit_series = deposit_series.ewm(alpha=0.002).mean()
+            self.area_id_to_deposit_pred[loc_area_id] = deposit_series.loc[last_valid_date]'''
+
+
+    def predict(self) -> pd.Series:
         """테스트 데이터에 대해 예측을 수행합니다.
-
-        메서드를 호출하기 전, fit 메서드를 먼저 호출해야합니다.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            예측을 수행할 테스트데이터입니다.
 
         Returns
         -------
         pd.Series
             테스트데이터에 대한 예측한 결과입니다.
         """
-        y_pred = X['location_with_area_id'].map(lambda x: self.target.get(x, self.impute_value))
+        y_pred = self.test_df['location_with_area_id'].map(self.area_id_to_deposit_pred)
         return y_pred

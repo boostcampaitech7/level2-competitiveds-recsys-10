@@ -1,67 +1,51 @@
+import copy
 import pandas as pd
-from tqdm import tqdm
-import lightgbm as lgb
+from .. import utils
 from .model import Model
 from .geo_model import GeoModel
 from .naive_model import NaiveModel
-from ..preprocessor import Preprocessor
 
 class EnsembleModel(Model):
-    """각종 지리정보가 feature로 추가된 모델입니다.
+    """GeoModel과 NaiveModel을 앙상블하여 예측하는 모델입니다.
     """
 
-    def preprocess(self, preprocessor: Preprocessor) -> None:
-        """지리 관련 feature를 추가합니다.
+    def __init__(self) -> None:
+        self.geo_model = GeoModel()
+        self.naive_model = NaiveModel()
+
+    def set_data(self, dataframes: dict[str, pd.DataFrame]) -> None:
+        """데이터를 설정합니다.
 
         Parameters
         ----------
-        preprocessor : Preprocessor
-            전처리될 데이터를 담고 있는 Preprocessor 객체입니다.
+        dataframes : dict[str, pd.DataFrame]
+            학습 및 테스트 데이터, 그리고 그 외 정보를 포함한 딕셔너리입니다.
         """
-        GeoModel.preprocess(self, preprocessor)
-        NaiveModel.preprocess(self, preprocessor)
+        self.dataframes = dataframes
+        self.geo_model.set_data(copy.deepcopy(dataframes))
+        self.naive_model.set_data(copy.deepcopy(dataframes))
 
-
-    def fit(self, X: pd.DataFrame, y: pd.Series, X_val: pd.DataFrame = None, y_val: pd.Series = None) -> None:
-        """모델을 학습합니다.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            학습 데이터입니다.
-        y : pd.Series
-            학습 데이터의 target 값입니다.
-        X_val : pd.DataFrame, optional
-            검증 데이터입니다.
-            early stopping을 위한 것으로, 선택적으로 제공합니다.
-        y_val : pd.Series, optional
-            검증 데이터의 target 값입니다.
-            early stopping을 위한 것으로, 선택적으로 제공합니다.
+    def preprocess(self) -> None:
+        """GeoModel과 NaiveModel의 전처리를 수행합니다.
         """
-        NaiveModel.fit(self, X, y, X_val, y_val)
-        GeoModel.fit(self, X, y, X_val, y_val)
+        self.geo_model.preprocess()
+        self.naive_model.preprocess()
 
-    def predict(self, X: pd.DataFrame) -> pd.Series:
-        """테스트 데이터에 대해 예측을 수행합니다.
-
-        메서드를 호출하기 전, fit 메서드를 먼저 호출해야합니다.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            예측을 수행할 테스트데이터입니다.
-
-        Returns
-        -------
-        pd.Series
-            테스트데이터에 대한 예측한 결과입니다.
+    def fit(self) -> None:
+        """GeoModel과 NaiveModel을 학습합니다.
         """
-        naive_pred = NaiveModel.predict(self, X)
-        geo_pred = GeoModel.predict(self, X)
+        self.geo_model.fit()
+        self.naive_model.fit()
+
+    def predict(self) -> pd.Series:
+        """GeoModel과 NaiveModel을 이용하여 예측을 수행합니다.
+        """
+        naive_pred = self.naive_model.predict()
+        geo_pred = self.geo_model.predict()
 
         naive_pred.reset_index(drop=True, inplace=True)
         geo_pred.reset_index(drop=True, inplace=True)
-
         naive_pred.fillna(geo_pred, inplace=True)
-        naive_pred = naive_pred * 0.5 + geo_pred * 0.5
-        return naive_pred
+
+        final_pred = 0.4 * naive_pred + 0.6 * geo_pred
+        return final_pred
