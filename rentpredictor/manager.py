@@ -1,5 +1,6 @@
 import pandas as pd
 from .models.model import Model
+from .preprocessor import Preprocessor
 from . import utils
 
 class Manager:
@@ -39,13 +40,19 @@ class Manager:
         tuple[pd.Series, pd.Series]
             검증 데이터의 실제값과 예측값입니다.
         """
-        train_start, train_end = int(train_start.strftime('%Y%m')), int(train_end.strftime('%Y%m'))
-        val_start, val_end = int(val_start.strftime('%Y%m')), int(val_end.strftime('%Y%m'))
-        all_df = self.dataframes['train_df']
-        train_df = all_df[((all_df['contract_year_month'] >= train_start) &
-                           (all_df['contract_year_month'] <= train_end))].copy()
-        val_df = all_df[((all_df['contract_year_month'] >= val_start) &
-                         (all_df['contract_year_month'] <= val_end))].copy()
+        preproc = Preprocessor(self.dataframes)
+        preproc.add_contract_datetime()
+        all_df = preproc.get_train_df()
+        train_df = all_df[
+            ((all_df['contract_datetime'] >= train_start) &
+            (all_df['contract_datetime'] <= train_end))
+        ].copy()
+        val_df = all_df[
+            ((all_df['contract_datetime'] >= val_start) &      
+            (all_df['contract_datetime'] <= val_end))
+        ].copy()
+        train_df.drop(columns=['contract_datetime'], inplace=True)
+        val_df.drop(columns=['contract_datetime'], inplace=True)
 
         model: Model = self.model_cls()
         cur_dataframes = self.dataframes.copy()

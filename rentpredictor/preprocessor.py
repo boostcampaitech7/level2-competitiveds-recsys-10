@@ -1,12 +1,10 @@
 import numpy as np
 import pandas as pd
 import time
-import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score, davies_bouldin_score
-
 
 class Preprocessor:
     """데이터 전처리를 수행하는 클래스입니다.
@@ -20,12 +18,12 @@ class Preprocessor:
         dataframes : dict[str, pd.DataFrame]
             학습 데이터, 테스트 데이터, 그리고 그 외 정보를 포함한 딕셔너리입니다.
         """
-        self.train_df = dataframes['train_df']
-        self.test_df = dataframes['test_df']
-        self.park_df = dataframes['park_df']
-        self.school_df = dataframes['school_df']
-        self.subway_df = dataframes['subway_df']
-        self.interest_df = dataframes['interest_df']
+        self.train_df = dataframes['train_df'].copy()
+        self.test_df = dataframes['test_df'].copy()
+        self.park_df = dataframes['park_df'].copy()
+        self.school_df = dataframes['school_df'].copy()
+        self.subway_df = dataframes['subway_df'].copy()
+        self.interest_df = dataframes['interest_df'].copy()
 
         # train_df와 test_df를 합친 DataFrame입니다.
         # 전처리는 이 DataFrame을 기반으로 진행됩니다.
@@ -196,10 +194,12 @@ class Preprocessor:
 
         contract_year_month 행이 존재해야합니다.
         """
-        self.all_df = self.all_df.merge(self.interest_df,
-                                        left_on='contract_year_month',
-                                        right_on='year_month', 
-                                        how='left')
+        self.all_df = self.all_df.merge(
+            self.interest_df,
+            left_on='contract_year_month',
+            right_on='year_month', 
+            how='left'
+        )
 
     def drop_columns(self, column_names: list[str]) -> None:
         """불필요한 열을 제거합니다.
@@ -207,7 +207,7 @@ class Preprocessor:
         Parameters
         ----------
         column_names : list[str]
-            제거핧 열의 이름입니다.
+            제거할 열의 이름입니다.
         """
         self.all_df = self.all_df.drop(columns=column_names)
 
@@ -255,30 +255,6 @@ class Preprocessor:
 
             end_time = time.time()
             print(f"Clustering with k = {k} finished at {time.strftime('%Y-%m-%d %H:%M:%S')} (Duration: {end_time - start_time:.2f} seconds)")
-
-        plt.figure(figsize=(15, 5))
-
-        plt.subplot(1, 3, 1)
-        plt.plot(range(min_k, max_k + 1), inertia, 'bx-')
-        plt.xlabel('Number of clusters')
-        plt.ylabel('Inertia')
-        plt.title('Elbow Method for Optimal k')
-
-        plt.subplot(1, 3, 2)
-        plt.plot(range(min_k, max_k + 1), silhouette_scores, 'bx-')
-        plt.xlabel('Number of clusters')
-        plt.ylabel('Silhouette Score')
-        plt.title('Silhouette Score for Optimal k')
-
-        plt.subplot(1, 3, 3)
-        plt.plot(range(min_k, max_k + 1), davies_bouldin_scores, 'bx-')
-        plt.xlabel('Number of clusters')
-        plt.ylabel('Davies-Bouldin Index')
-        plt.title('Davies-Bouldin Index for Optimal k')
-
-        plt.tight_layout()
-        plt.show()
-
 
         optimal_k = range(min_k, max_k + 1)[silhouette_scores.index(max(silhouette_scores))]
         print(f"Optimal k found: {optimal_k}")
@@ -365,7 +341,7 @@ class Preprocessor:
         pd.DataFrame
             전처리된 학습 데이터 프레임입니다.
         """
-        train_df = self.all_df.iloc[:len(self.train_df)]
+        train_df = self.all_df.iloc[:len(self.train_df)].copy()
         return train_df
 
     def get_test_df(self) -> pd.DataFrame:
@@ -376,6 +352,6 @@ class Preprocessor:
         pd.DataFrame
             전처리된 테스트 데이터 프레임입니다.
         """
-        test_df = self.all_df.iloc[len(self.train_df):]
+        test_df = self.all_df.iloc[len(self.train_df):].copy()
         return test_df
 

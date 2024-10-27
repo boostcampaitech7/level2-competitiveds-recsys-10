@@ -40,21 +40,6 @@ class NaiveModel(Model):
             for loc_area_id, group in grouped_house_df
         }
 
-        '''self.area_id_to_deposit_pred = {
-            loc_area_id: group['deposit'].tail(5).mean()
-            for loc_area_id, group in grouped_house_df
-        }'''
-
-        '''self.area_id_to_deposit_pred = {}
-        for loc_area_id, group in tqdm(grouped_house_df):
-            group = group.set_index('contract_datetime')
-            deposit_series = group['deposit'].resample('1D').mean()
-            deposit_series = deposit_series.interpolate(method='linear', limit_area='inside')
-            last_valid_date = deposit_series.last_valid_index()
-            deposit_series = deposit_series.ewm(alpha=0.002).mean()
-            self.area_id_to_deposit_pred[loc_area_id] = deposit_series.loc[last_valid_date]'''
-
-
     def predict(self) -> pd.Series:
         """테스트 데이터에 대해 예측을 수행합니다.
 

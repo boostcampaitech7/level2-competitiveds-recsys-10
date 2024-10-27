@@ -9,10 +9,7 @@ import sklearn.model_selection
 import xgboost as xgb
 from catboost import CatBoostRegressor
 
-
-
-
-class ParameterTune:
+class ParameterTuner:
     """하이퍼 파라미터를 최적화 하는 class입니다. 
     """
     def __init__(self,model : str,X_train : pd.DataFrame,y_train : pd.Series,X_val : pd.DataFrame,y_val : pd.Series) -> None:
@@ -46,10 +43,7 @@ class ParameterTune:
         float
             검증 데이터에 대한 Mean Absolute Error (MAE)를 반환합니다
         """
-
-    
         if self.model == "lgb":
-
             param = {
                 "learning_rate": trial.suggest_loguniform("learning_rate", 1e-3, 0.1),
                 "n_estimators": trial.suggest_int("n_estimators", 100, 1500),
@@ -59,19 +53,16 @@ class ParameterTune:
                 "colsample_bytree" : trial.suggest_uniform('colsample_bytree',0.6,1.0),
                 "random_state" : 42
             }
-
             clf = lgb.LGBMRegressor(**param,force_col_wise=True)
             clf.fit(self.X_train, self.y_train)
             y_pred = clf.predict(self.X_val)
 
         elif self.model == "XGBoost":
- 
             param = {
                 "subsample": trial.suggest_float("subsample", 0.5, 1.0),
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3,log=True),
                 "n_estimators": trial.suggest_int("n_estimators", 50, 1000),
             }
-
             # XGBoost 모델 학습
             clf = xgb.XGBRegressor(**param)
             clf.fit(self.X_train, self.y_train)
@@ -79,7 +70,6 @@ class ParameterTune:
 
 
         elif self.model == "CatBoost":
- 
             param = {
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
                 "iterations": int(trial.suggest_int("iterations", 100, 1000, log=True)),
@@ -92,34 +82,31 @@ class ParameterTune:
             clf.fit(self.X_train, self.y_train)
             y_pred = clf.predict(self.X_val)
 
-
         return mean_absolute_error(self.y_val,y_pred)
         
 
     def tune(self) -> optuna.Trial:
         """Optuna를 사용하여 하이퍼 파라미터 튜닝을 수행하는 함수입니다.
 
-    주어진 모델에 대해 하이퍼 파라미터를 자동으로 탐색하며, 최적의 파라미터를 반환합니다.
-    Optuna의 `study.optimize` 메서드를 사용하여 지정된 횟수만큼 실험을 진행하고,
-    가장 성능이 좋은 하이퍼 파라미터를 찾습니다.
+        주어진 모델에 대해 하이퍼 파라미터를 자동으로 탐색하며, 최적의 파라미터를 반환합니다.
+        Optuna의 `study.optimize` 메서드를 사용하여 지정된 횟수만큼 실험을 진행하고,
+        가장 성능이 좋은 하이퍼 파라미터를 찾습니다.
 
-    Returns
-    -------
-    dict
-        최적의 하이퍼 파라미터를 key-value 쌍으로 반환합니다.
+        Returns
+        -------
+        dict
+            최적의 하이퍼 파라미터를 key-value 쌍으로 반환합니다.
 
-    Example
-    -------
-    >>> parameter_tuner = ParameterTune('lgb', X, y)
-    >>> best_params = parameter_tuner.tune()
-    >>> print(best_params)
-    """
-
+        Example
+        -------
+        >>> parameter_tuner = ParameterTune('lgb', X, y)
+        >>> best_params = parameter_tuner.tune()
+        >>> print(best_params)
+        """
         study = optuna.create_study(direction="minimize")
         study.optimize(self.objective,n_trials=10)
 
         trial = study.best_trial
         print(f"MAE : {trial.value}")
-
 
         return trial.params
